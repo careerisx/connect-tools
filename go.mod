@@ -24,3 +24,8 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 )
+
+tool (
+	connectrpc.com/connect/cmd/protoc-gen-connect-go
+	google.golang.org/protobuf/cmd/protoc-gen-go
+)

@@ -23,6 +23,7 @@
     "zustand": "^5"
   },
   "devDependencies": {
+    "@bufbuild/protoc-gen-es": "2.15.0",
     "@tailwindcss/vite": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
