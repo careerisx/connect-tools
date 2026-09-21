@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package connecttools.v1;
+
+option go_package = "connect-tools/gen/go/connecttools/v1;connecttoolsv1";
+
+import "connecttools/v1/mqtt.proto";
+import "google/protobuf/timestamp.proto";
+
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_INBOUND = 1;
+  DIRECTION_OUTBOUND = 2;
+  DIRECTION_INTERNAL = 3;
+}
+
+enum Actor {
+  ACTOR_UNSPECIFIED = 0;
+  ACTOR_REMOTE = 1;
+  ACTOR_USER = 2;
+  ACTOR_CLI = 3;
+  ACTOR_MCP = 4;
+  ACTOR_SYSTEM = 5;
+}
+
+message RecordError {
+  string code = 1;
+  string message = 2;
+  string operation = 3;
+  bool retryable = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  map<string, string> details = 6;
+}
+
+message DebugRecord {
+  uint64 sequence = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string session_id = 3;
+  string peer_id = 4;
+  Direction direction = 5;
+  Actor actor = 6;
+  // payload always contains the original bytes retained by the record store.
+  bytes payload = 7;
+  map<string, string> protocol_metadata = 8;
+  RecordError error = 9;
+  MQTTRecordMetadata mqtt_metadata = 10;
+}
+
+message RecordCursor {
+  // Results start strictly after this globally monotonic sequence.
+  uint64 after_sequence = 1;
+}
+
+message RecordFilter {
+  repeated string session_ids = 1;
+  optional Direction direction = 2;
+  optional Actor actor = 3;
+  // payload_contains performs a raw byte subsequence match.
+  bytes payload_contains = 4;
+}
+
+message ListRecordsRequest {
+  RecordFilter filter = 1;
+  RecordCursor cursor = 2;
+  // page_size defaults to 100 and is capped at 500.
+  uint32 page_size = 3;
+}
+
+message ListRecordsResponse {
+  repeated DebugRecord records = 1;
+  // next_cursor is the cursor to pass to the next request. It advances to the
+  // last scanned sequence even when filtering produced no returned records.
+  RecordCursor next_cursor = 2;
+  bool has_more = 3;
+}
+
+message WaitForRecordRequest {
+  RecordFilter filter = 1;
+  RecordCursor cursor = 2;
+  // timeout_ms defaults to 30000 and is capped at 120000.
+  uint32 timeout_ms = 3;
+}
+
+message ClearRecordsRequest {
+  // An absent or empty filter clears all retained records.
+  RecordFilter filter = 1;
+}
+
+message ClearRecordsResponse {
+  uint64 cleared_records = 1;
+  uint64 cleared_payload_bytes = 2;
+}
+
+enum RecordEventType {
+  RECORD_EVENT_TYPE_UNSPECIFIED = 0;
+  RECORD_EVENT_TYPE_APPENDED = 1;
+  RECORD_EVENT_TYPE_CLEARED = 2;
+  RECORD_EVENT_TYPE_RETENTION_LIMIT_REACHED = 3;
+}
+
+message RecordEvent {
+  RecordEventType type = 1;
+  DebugRecord record = 2;
+  repeated string session_ids = 3;
+  uint64 affected_records = 4;
+  uint64 affected_payload_bytes = 5;
+}
+
+service RecordService {
+  rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
+  rpc WaitForRecord(WaitForRecordRequest) returns (DebugRecord);
+  rpc ClearRecords(ClearRecordsRequest) returns (ClearRecordsResponse);
+}

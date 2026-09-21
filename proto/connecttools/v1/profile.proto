@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package connecttools.v1;
+
+option go_package = "connect-tools/gen/go/connecttools/v1;connecttoolsv1";
+
+import "connecttools/v1/mqtt.proto";
+import "connecttools/v1/session.proto";
+import "google/protobuf/timestamp.proto";
+
+message TCPClientProfile {
+  string host = 1;
+  uint32 port = 2;
+  FramingConfig framing = 3;
+  bool auto_reconnect = 4;
+  uint32 connect_timeout_ms = 5;
+  uint32 read_timeout_ms = 6;
+  uint32 write_timeout_ms = 7;
+  bool keep_alive = 8;
+  uint32 keep_alive_period_ms = 9;
+  bool no_delay = 10;
+}
+
+message TCPServerProfile {
+  string bind_host = 1;
+  uint32 port = 2;
+  uint32 max_connections = 3;
+  FramingConfig framing = 4;
+  bool keep_alive = 5;
+  bool no_delay = 6;
+}
+
+message Profile {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+
+  oneof connection {
+    TCPClientProfile tcp_client = 10;
+    TCPServerProfile tcp_server = 11;
+    MQTTProfile mqtt = 12;
+  }
+
+  google.protobuf.Timestamp created_at = 20;
+  google.protobuf.Timestamp updated_at = 21;
+}
+
+enum ProfileEventType {
+  PROFILE_EVENT_TYPE_UNSPECIFIED = 0;
+  PROFILE_EVENT_TYPE_CREATED = 1;
+  PROFILE_EVENT_TYPE_UPDATED = 2;
+  PROFILE_EVENT_TYPE_DELETED = 3;
+}
+
+message ProfileEvent {
+  ProfileEventType type = 1;
+  Profile profile = 2;
+  string profile_id = 3;
+}
+
+message ProfileFilter {
+  repeated SessionKind kinds = 1;
+  string name_contains = 2;
+}
+
+message ListProfilesRequest {
+  ProfileFilter filter = 1;
+  // page_size defaults to 50 and is capped at 500.
+  uint32 page_size = 2;
+  // page_token is an opaque token returned by ListProfilesResponse.
+  string page_token = 3;
+}
+
+message ListProfilesResponse {
+  repeated Profile profiles = 1;
+  string next_page_token = 2;
+}
+
+message GetProfileRequest {
+  string profile_id = 1;
+}
+
+message GetProfileResponse {
+  Profile profile = 1;
+}
+
+message CreateProfileRequest {
+  // id, created_at, and updated_at are assigned by the server.
+  Profile profile = 1;
+  // Credential values are written directly to the OS credential store and are
+  // never persisted in the profile document or returned in a response.
+  bytes mqtt_password = 2;
+  bytes mqtt_private_key_passphrase = 3;
+}
+
+message CreateProfileResponse {
+  Profile profile = 1;
+}
+
+message UpdateProfileRequest {
+  // profile.id is required. This is a full replacement of all mutable fields;
+  // omitted scalar values intentionally replace existing values with defaults.
+  // created_at and updated_at are managed by the server.
+  Profile profile = 1;
+  bytes mqtt_password = 2;
+  bytes mqtt_private_key_passphrase = 3;
+  bool clear_mqtt_password = 4;
+  bool clear_mqtt_private_key_passphrase = 5;
+}
+
+message UpdateProfileResponse {
+  Profile profile = 1;
+}
+
+message DeleteProfileRequest {
+  string profile_id = 1;
+}
+
+message DeleteProfileResponse {
+  bool deleted = 1;
+}
+
+service ProfileService {
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc CreateProfile(CreateProfileRequest) returns (CreateProfileResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc DeleteProfile(DeleteProfileRequest) returns (DeleteProfileResponse);
+}

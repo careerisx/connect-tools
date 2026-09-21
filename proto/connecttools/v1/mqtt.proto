@@ -1,0 +1,242 @@
+syntax = "proto3";
+
+package connecttools.v1;
+
+option go_package = "connect-tools/gen/go/connecttools/v1;connecttoolsv1";
+
+import "connecttools/v1/session.proto";
+
+// MQTTVersion selects the MQTT wire protocol version used by a client.
+enum MQTTVersion {
+  MQTT_VERSION_UNSPECIFIED = 0;
+  MQTT_VERSION_3_1_1 = 1;
+  MQTT_VERSION_5_0 = 2;
+}
+
+// MQTTQoS represents MQTT QoS 0, 1, and 2. Enum values are intentionally
+// distinct from the wire values so zero remains the protobuf unspecified value.
+enum MQTTQoS {
+  MQTT_QOS_UNSPECIFIED = 0;
+  MQTT_QOS_AT_MOST_ONCE = 1;
+  MQTT_QOS_AT_LEAST_ONCE = 2;
+  MQTT_QOS_EXACTLY_ONCE = 3;
+}
+
+enum MQTTPayloadFormat {
+  MQTT_PAYLOAD_FORMAT_UNSPECIFIED = 0;
+  MQTT_PAYLOAD_FORMAT_BYTES = 1;
+  MQTT_PAYLOAD_FORMAT_UTF8 = 2;
+}
+
+enum MQTTRetainHandling {
+  MQTT_RETAIN_HANDLING_UNSPECIFIED = 0;
+  MQTT_RETAIN_HANDLING_SEND_AT_SUBSCRIBE = 1;
+  MQTT_RETAIN_HANDLING_SEND_IF_NEW = 2;
+  MQTT_RETAIN_HANDLING_DO_NOT_SEND = 3;
+}
+
+message MQTTUserProperty {
+  string name = 1;
+  string value = 2;
+}
+
+// MQTTPublishProperties contains the MQTT 5 properties supported on a PUBLISH
+// packet. Optional fields preserve the difference between absent and explicit
+// default values. MQTT 3.1.1 requests must leave this message unset.
+message MQTTPublishProperties {
+  optional string response_topic = 1;
+  optional bytes correlation_data = 2;
+  optional string content_type = 3;
+  optional MQTTPayloadFormat payload_format = 4;
+  optional uint32 message_expiry_interval_seconds = 5;
+  repeated MQTTUserProperty user_properties = 6;
+}
+
+// MQTTWillProperties contains MQTT 5 properties valid for a Will message.
+message MQTTWillProperties {
+  optional uint32 will_delay_interval_seconds = 1;
+  optional string response_topic = 2;
+  optional bytes correlation_data = 3;
+  optional string content_type = 4;
+  optional MQTTPayloadFormat payload_format = 5;
+  optional uint32 message_expiry_interval_seconds = 6;
+  repeated MQTTUserProperty user_properties = 7;
+}
+
+message MQTTTLSConfig {
+  bool enabled = 1;
+  string ca_file = 2;
+  string client_cert_file = 3;
+  string client_key_file = 4;
+  string server_name = 5;
+  // private_key_passphrase_ref is an opaque reference resolved only while the
+  // client certificate is loaded. It never contains the passphrase itself.
+  string private_key_passphrase_ref = 6;
+}
+
+message MQTTWill {
+  string topic = 1;
+  bytes payload = 2;
+  MQTTQoS qos = 3;
+  bool retain = 4;
+  MQTTWillProperties properties = 5;
+}
+
+// MQTTSubscriptionOptions describes a desired subscription. MQTT 5-only
+// options must remain at their defaults for MQTT 3.1.1 sessions.
+message MQTTSubscriptionOptions {
+  string filter = 1;
+  MQTTQoS qos = 2;
+  bool no_local = 3;
+  bool retain_as_published = 4;
+  MQTTRetainHandling retain_handling = 5;
+}
+
+// MQTTSubscriptionBatch is one MQTT SUBSCRIBE packet's persistent desired
+// state. subscription_identifier and user_properties apply uniformly to every
+// filter in subscriptions and are replayed together after reconnect.
+message MQTTSubscriptionBatch {
+  repeated MQTTSubscriptionOptions subscriptions = 1;
+  optional uint32 subscription_identifier = 2;
+  repeated MQTTUserProperty user_properties = 3;
+}
+
+// MQTTSubscription is runtime state for one filter. desired survives temporary
+// disconnects; acknowledged reports the latest broker acknowledgment. The
+// packet-scoped MQTT 5 properties are copied into every filter result so list
+// and reconnect operations can reconstruct their original subscription batch.
+message MQTTSubscription {
+  MQTTSubscriptionOptions options = 1;
+  bool desired = 2;
+  bool acknowledged = 3;
+  optional uint32 reason_code = 4;
+  string failure_reason = 5;
+  optional uint32 subscription_identifier = 6;
+  repeated MQTTUserProperty user_properties = 7;
+}
+
+message ReconnectPolicy {
+  bool enabled = 1;
+  // A zero initial_delay_ms uses the server default.
+  uint32 initial_delay_ms = 2;
+  // A zero max_delay_ms uses the server default.
+  uint32 max_delay_ms = 3;
+  // A zero multiplier uses the server default.
+  double multiplier = 4;
+  // jitter_ratio is in the inclusive range 0.0 to 1.0.
+  double jitter_ratio = 5;
+  // max_attempts is zero for unlimited attempts until manually stopped.
+  uint32 max_attempts = 6;
+}
+
+message MQTTProfile {
+  MQTTVersion version = 1;
+  string host = 2;
+  uint32 port = 3;
+  string client_id = 4;
+  string username = 5;
+  // password_ref is an opaque credential-store reference, never plaintext.
+  string password_ref = 6;
+  uint32 keep_alive_seconds = 7;
+  bool clean_start = 8;
+  // session_expiry_seconds is used only by MQTT 5.0. Presence distinguishes
+  // an omitted broker/default policy from an explicit zero-second expiry.
+  optional uint32 session_expiry_seconds = 9;
+  MQTTTLSConfig tls = 10;
+  MQTTWill will = 11;
+  repeated MQTTSubscriptionBatch initial_subscriptions = 12;
+  ReconnectPolicy reconnect = 13;
+}
+
+message PublishRequest {
+  string session_id = 1;
+  string topic = 2;
+  PayloadInput payload = 3;
+  MQTTQoS qos = 4;
+  bool retain = 5;
+  MQTTPublishProperties properties = 6;
+}
+
+message PublishResponse {
+  // accepted means the adapter accepted the message into its network path.
+  bool accepted = 1;
+  optional uint32 packet_id = 2;
+  bool acknowledged = 3;
+  optional uint32 reason_code = 4;
+  string reason_message = 5;
+}
+
+message SubscribeRequest {
+  string session_id = 1;
+  repeated MQTTSubscriptionOptions subscriptions = 2;
+  // These MQTT 5 packet properties apply uniformly to every filter in this
+  // batch, are persisted into desired state, and are replayed after reconnect.
+  // They must remain absent for MQTT 3.1.1 sessions.
+  optional uint32 subscription_identifier = 3;
+  repeated MQTTUserProperty user_properties = 4;
+}
+
+message MQTTSubscribeResult {
+  string filter = 1;
+  bool accepted = 2;
+  MQTTSubscription subscription = 3;
+  optional uint32 reason_code = 4;
+  string reason_message = 5;
+}
+
+message SubscribeResponse {
+  repeated MQTTSubscribeResult results = 1;
+}
+
+message UnsubscribeRequest {
+  string session_id = 1;
+  repeated string filters = 2;
+  repeated MQTTUserProperty user_properties = 3;
+}
+
+message MQTTUnsubscribeResult {
+  string filter = 1;
+  bool accepted = 2;
+  bool acknowledged = 3;
+  optional uint32 reason_code = 4;
+  string reason_message = 5;
+}
+
+message UnsubscribeResponse {
+  repeated MQTTUnsubscribeResult results = 1;
+}
+
+message ListSubscriptionsRequest {
+  string session_id = 1;
+  // page_size defaults to 50 and is capped at 500.
+  uint32 page_size = 2;
+  // page_token is an opaque token returned by ListSubscriptionsResponse.
+  string page_token = 3;
+}
+
+message ListSubscriptionsResponse {
+  repeated MQTTSubscription subscriptions = 1;
+  string next_page_token = 2;
+}
+
+// MQTTRecordMetadata is the typed MQTT metadata attached to a DebugRecord.
+message MQTTRecordMetadata {
+  MQTTVersion version = 1;
+  string topic = 2;
+  MQTTQoS qos = 3;
+  bool retain = 4;
+  bool duplicate = 5;
+  optional uint32 packet_id = 6;
+  bool acknowledged = 7;
+  optional uint32 reason_code = 8;
+  string reason_message = 9;
+  MQTTPublishProperties properties = 10;
+  repeated uint32 subscription_identifiers = 11;
+}
+
+service MQTTService {
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse);
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+}

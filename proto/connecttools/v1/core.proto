@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package connecttools.v1;
+
+option go_package = "connect-tools/gen/go/connecttools/v1;connecttoolsv1";
+
+import "connecttools/v1/profile.proto";
+import "connecttools/v1/records.proto";
+import "connecttools/v1/session.proto";
+import "google/protobuf/timestamp.proto";
+
+service CoreService {
+  rpc GetStatus(GetStatusRequest) returns (CoreStatus);
+  rpc CreateBrowserLogin(CreateBrowserLoginRequest) returns (CreateBrowserLoginResponse);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+  rpc SetMCPEnabled(SetMCPEnabledRequest) returns (CoreStatus);
+  rpc WatchEvents(WatchEventsRequest) returns (stream CoreEvent);
+}
+
+message GetStatusRequest {}
+message CreateBrowserLoginRequest {}
+message CreateBrowserLoginResponse {
+  string url = 1;
+}
+
+message CoreStatus {
+  string version = 1;
+  string instance_id = 2;
+  google.protobuf.Timestamp started_at = 3;
+  string listen_address = 4;
+  bool mcp_enabled = 5;
+}
+
+message ShutdownRequest {}
+message ShutdownResponse {
+  bool accepted = 1;
+}
+
+message SetMCPEnabledRequest { bool enabled = 1; }
+
+// WatchEventsRequest selects live events whose sequence is strictly greater
+// than after_sequence. Events are not replayed from durable storage.
+message WatchEventsRequest {
+  uint64 after_sequence = 1;
+}
+
+enum CoreLifecycleEventType {
+  CORE_LIFECYCLE_EVENT_TYPE_UNSPECIFIED = 0;
+  CORE_LIFECYCLE_EVENT_TYPE_SHUTTING_DOWN = 1;
+}
+
+message CoreLifecycleEvent {
+  CoreLifecycleEventType type = 1;
+  CoreStatus status = 2;
+}
+
+// CoreEvent is the ordered live event envelope. Fields 3-5 are retained for
+// wire compatibility with Phase 1 clients; new producers populate event_body.
+message CoreEvent {
+  uint64 sequence = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string type = 3 [deprecated = true];
+  bytes payload = 4 [deprecated = true];
+  bool payload_truncated = 5 [deprecated = true];
+
+  oneof event_body {
+    ProfileEvent profile_event = 10;
+    SessionEvent session_event = 11;
+    RecordEvent record_event = 12;
+    CoreLifecycleEvent core_lifecycle_event = 13;
+  }
+}

@@ -1,0 +1,143 @@
+syntax = "proto3";
+
+package connecttools.v1;
+
+option go_package = "connect-tools/gen/go/connecttools/v1;connecttoolsv1";
+
+import "google/protobuf/timestamp.proto";
+
+enum SessionKind {
+  SESSION_KIND_UNSPECIFIED = 0;
+  SESSION_KIND_TCP_CLIENT = 1;
+  SESSION_KIND_TCP_SERVER = 2;
+  SESSION_KIND_TCP_PEER = 3;
+  SESSION_KIND_MQTT_CLIENT = 4;
+}
+
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  SESSION_STATE_STOPPED = 1;
+  SESSION_STATE_STARTING = 2;
+  SESSION_STATE_RUNNING = 3;
+  SESSION_STATE_STOPPING = 4;
+  SESSION_STATE_ERROR = 5;
+}
+
+enum PayloadEncoding {
+  PAYLOAD_ENCODING_UNSPECIFIED = 0;
+  PAYLOAD_ENCODING_TEXT = 1;
+  PAYLOAD_ENCODING_HEX = 2;
+  PAYLOAD_ENCODING_BASE64 = 3;
+}
+
+enum FrameMode {
+  FRAME_MODE_UNSPECIFIED = 0;
+  FRAME_MODE_RAW_READ = 1;
+  FRAME_MODE_FIXED_LENGTH = 2;
+  FRAME_MODE_DELIMITER = 3;
+}
+
+// PayloadInput describes user input before it is decoded into authoritative
+// bytes. charset applies to TEXT. append_delimiter is appended after decoding.
+message PayloadInput {
+  PayloadEncoding encoding = 1;
+  string data = 2;
+  string charset = 3;
+  bytes append_delimiter = 4;
+}
+
+message FramingConfig {
+  FrameMode mode = 1;
+  uint32 fixed_length = 2;
+  bytes delimiter = 3;
+  bool include_delimiter = 4;
+}
+
+message SessionError {
+  string code = 1;
+  string message = 2;
+  string operation = 3;
+  bool retryable = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  map<string, string> details = 6;
+}
+
+message Session {
+  string id = 1;
+  string profile_id = 2;
+  string parent_id = 3;
+  SessionKind kind = 4;
+  SessionState state = 5;
+  string display_name = 6;
+  string local_address = 7;
+  string remote_address = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  SessionError last_error = 11;
+}
+
+enum SessionEventType {
+  SESSION_EVENT_TYPE_UNSPECIFIED = 0;
+  SESSION_EVENT_TYPE_CREATED = 1;
+  SESSION_EVENT_TYPE_UPDATED = 2;
+  SESSION_EVENT_TYPE_REMOVED = 3;
+}
+
+message SessionEvent {
+  SessionEventType type = 1;
+  Session session = 2;
+  string session_id = 3;
+}
+
+message SessionFilter {
+  repeated SessionKind kinds = 1;
+  repeated SessionState states = 2;
+  string profile_id = 3;
+  string parent_id = 4;
+}
+
+message ListSessionsRequest {
+  SessionFilter filter = 1;
+  // page_size defaults to 50 and is capped at 500.
+  uint32 page_size = 2;
+  // page_token is an opaque token returned by ListSessionsResponse.
+  string page_token = 3;
+}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+  string next_page_token = 2;
+}
+
+message GetSessionRequest {
+  string session_id = 1;
+}
+
+message GetSessionResponse {
+  Session session = 1;
+}
+
+message StartSessionRequest {
+  string profile_id = 1;
+  // display_name overrides the profile name only for this runtime session.
+  optional string display_name = 2;
+}
+
+message StartSessionResponse {
+  Session session = 1;
+}
+
+message StopSessionRequest {
+  string session_id = 1;
+}
+
+message StopSessionResponse {
+  Session session = 1;
+}
+
+service SessionService {
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
+  rpc StopSession(StopSessionRequest) returns (StopSessionResponse);
+}

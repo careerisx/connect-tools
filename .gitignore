@@ -1,0 +1,13 @@
+.idea
+gen
+web/node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
+dist/
+internal/web/dist/*
+!internal/web/dist/.keep
+coverage/
+*.test
+.DS_Store
+.superpowers/
+superpowers

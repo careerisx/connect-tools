@@ -1,0 +1,34 @@
+{
+  "name": "connect-tools-web",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2",
+    "@connectrpc/connect": "^2",
+    "@connectrpc/connect-web": "^2",
+    "@radix-ui/react-dialog": "^1",
+    "@radix-ui/react-tabs": "^1",
+    "@tanstack/react-virtual": "^3",
+    "class-variance-authority": "^0.7",
+    "clsx": "^2",
+    "lucide-react": "^1.47.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "tailwind-merge": "^3",
+    "zustand": "^5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vite": "^7"
+  }
+}

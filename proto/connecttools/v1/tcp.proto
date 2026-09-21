@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package connecttools.v1;
+
+option go_package = "connect-tools/gen/go/connecttools/v1;connecttoolsv1";
+
+import "connecttools/v1/session.proto";
+
+message SendTCPRequest {
+  // target_session_id may identify a TCP client, peer, or server. A server
+  // target broadcasts to a snapshot of its currently connected peers.
+  string target_session_id = 1;
+  PayloadInput payload = 2;
+}
+
+message PeerSendResult {
+  string peer_session_id = 1;
+  bool accepted = 2;
+  string error_code = 3;
+  string error_message = 4;
+  bool retryable = 5;
+}
+
+message SendTCPResponse {
+  // accepted is true when a client/peer send was queued, or when every peer in
+  // a server broadcast accepted the payload.
+  bool accepted = 1;
+  repeated PeerSendResult peer_results = 2;
+}
+
+message ListPeersRequest {
+  string server_session_id = 1;
+  // page_size defaults to 50 and is capped at 500.
+  uint32 page_size = 2;
+  // page_token is an opaque token returned by ListPeersResponse.
+  string page_token = 3;
+}
+
+message ListPeersResponse {
+  repeated Session peers = 1;
+  string next_page_token = 2;
+}
+
+service TCPService {
+  rpc Send(SendTCPRequest) returns (SendTCPResponse);
+  rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+}
