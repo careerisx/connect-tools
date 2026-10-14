@@ -23,19 +23,19 @@ Connect Tools 是一个跨平台的 TCP、MQTT 调试工具。它由一个 Go �
 
 ## 快速开始
 
-已有对应平台的可执行文件时，直接启动服务并打开 Web UI：
+已有对应平台的可执行文件时，直接启动服务：
 
 ```bash
-connect-tools serve --open
+connect-tools serve
 ```
 
 Windows PowerShell 使用：
 
 ```powershell
-.\connect-tools.exe serve --open
+.\connect-tools.exe serve
 ```
 
-程序会启动本地服务并通过一次性登录链接打开默认浏览器。服务进程需要保持运行；在终端按 `Ctrl+C` 可以退出。
+程序会在 `127.0.0.1:8765` 启动本地服务。浏览器直接访问 `http://127.0.0.1:8765/` 即可使用，无需登录。服务进程需要保持运行；在终端按 `Ctrl+C` 可以退出。如需启动时自动打开浏览器，可追加 `--open`。
 
 常用服务命令：
 
@@ -101,7 +101,7 @@ go build -o dist/connect-tools ./cmd/connect-tools
 
 ## Web UI 使用方法
 
-执行 `connect-tools serve --open` 后，可在 Web UI 中完成主要操作：
+执行 `connect-tools serve` 并访问 `http://127.0.0.1:8765/` 后，可在 Web UI 中完成主要操作：
 
 1. 在配置区域创建 TCP 客户端、TCP 服务端或 MQTT 配置。
 2. 启动配置，创建一个独立运行会话。
@@ -540,7 +540,7 @@ connect-tools mcp disable
 | `config.json` | MCP 等应用设置 |
 | `profiles.json` | TCP、MQTT 连接配置，不包含明文密码 |
 | `runtime.json` | 当前服务地址、进程和实例信息 |
-| `access-token` | 本地 API 与 MCP 的访问令牌 |
+| `access-token` | MCP 接口的访问令牌 |
 
 MQTT 密码和私钥口令优先保存在操作系统凭据库中：Windows Credential Manager、macOS Keychain、Linux Secret Service。如果系统凭据库不可用，程序会退回内存存储，服务退出后凭据会丢失。可使用 `connect-tools doctor` 检查当前凭据存储状态。
 
@@ -556,9 +556,9 @@ connect-tools serve
 
 然后运行 `connect-tools status` 确认状态。
 
-### Web UI 没有正常登录
+### Web UI 无法打开
 
-使用下面的命令重新生成一次性登录地址并打开浏览器：
+确认服务已经启动，然后直接访问 `http://127.0.0.1:8765/`。也可以使用下面的命令打开浏览器：
 
 ```bash
 connect-tools serve --open

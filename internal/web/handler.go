@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const contentSecurityPolicy = "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'; form-action 'none'"
+const contentSecurityPolicy = "default-src 'self'; base-uri 'none'; connect-src 'self' ws://127.0.0.1:*; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'; form-action 'none'"
 
 // NewHandler creates an embedded asset handler with SPA fallback routing.
 // Only GET and HEAD are accepted. If index.html has not been built, SPA routes

@@ -14,7 +14,7 @@ const sameOriginFetch: typeof globalThis.fetch = (input, init) =>
     credentials: "same-origin",
   });
 
-/** Client for the authenticated CoreService exposed by the current origin. */
+/** Client for the local Connect services exposed by the current origin. */
 const transport = createConnectTransport({
     baseUrl: window.location.origin,
     fetch: sameOriginFetch,

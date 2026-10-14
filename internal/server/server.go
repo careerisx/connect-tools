@@ -19,7 +19,6 @@ import (
 	"connect-tools/internal/records"
 	"connect-tools/internal/secrets"
 	"connect-tools/internal/web"
-	"connectrpc.com/connect"
 )
 
 const (
@@ -53,8 +52,9 @@ type Options struct {
 	WebAssets fs.FS
 }
 
-// Server hosts the local Connect API, browser login exchange, health endpoint,
-// and embedded web application.
+// Server hosts the local Connect API, MCP endpoint, health endpoint, and
+// embedded web application. Browser and Connect API access are limited by the
+// loopback listener instead of application-level authentication.
 type Server struct {
 	address string
 	core    *app.Core
@@ -97,47 +97,32 @@ func New(options Options) (*Server, error) {
 		shutdown: make(chan struct{}),
 	}
 	coreHandler := api.NewCoreHandler(options.Core, login, server.signalShutdown)
-	authInterceptor := api.NewAuthInterceptor(options.Token, "http://"+address, login)
-	connectPath, connectHandler := connecttoolsv1connect.NewCoreServiceHandler(
-		coreHandler,
-		connect.WithInterceptors(authInterceptor),
-	)
+	connectPath, connectHandler := connecttoolsv1connect.NewCoreServiceHandler(coreHandler)
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", healthHandler())
 	mux.Handle("GET /login", login.handler())
+	mux.Handle("GET /ws/events", api.NewCoreWebSocketHandler(options.Core, "http://"+address))
 	mux.Handle(connectPath, limitRequestBody(maxConnectRequestBodyBytes, connectHandler))
 	if options.Profiles != nil {
-		path, handler := connecttoolsv1connect.NewProfileServiceHandler(
-			api.NewProfileHandler(options.Profiles),
-			connect.WithInterceptors(authInterceptor),
-		)
+		path, handler := connecttoolsv1connect.NewProfileServiceHandler(api.NewProfileHandler(options.Profiles))
 		mux.Handle(path, limitRequestBody(maxConnectRequestBodyBytes, handler))
 	}
 	if options.Sessions != nil || options.TCP != nil {
 		if options.Sessions == nil || options.TCP == nil {
 			return nil, errors.New("server session and TCP services must be provided together")
 		}
-		path, handler := connecttoolsv1connect.NewSessionServiceHandler(
-			api.NewSessionHandlerWithMQTT(options.Sessions, options.TCP, options.MQTT),
-			connect.WithInterceptors(authInterceptor),
-		)
+		path, handler := connecttoolsv1connect.NewSessionServiceHandler(api.NewSessionHandlerWithMQTT(options.Sessions, options.TCP, options.MQTT))
 		mux.Handle(path, limitRequestBody(maxConnectRequestBodyBytes, handler))
-		path, handler = connecttoolsv1connect.NewTCPServiceHandler(
-			api.NewTCPHandler(options.TCP),
-			connect.WithInterceptors(authInterceptor),
-		)
+		path, handler = connecttoolsv1connect.NewTCPServiceHandler(api.NewTCPHandler(options.TCP))
 		mux.Handle(path, limitRequestBody(maxConnectRequestBodyBytes, handler))
 	}
 	if options.MQTT != nil {
-		path, handler := connecttoolsv1connect.NewMQTTServiceHandler(api.NewMQTTHandler(options.MQTT), connect.WithInterceptors(authInterceptor))
+		path, handler := connecttoolsv1connect.NewMQTTServiceHandler(api.NewMQTTHandler(options.MQTT))
 		mux.Handle(path, limitRequestBody(maxConnectRequestBodyBytes, handler))
 	}
 	if options.Records != nil {
-		path, handler := connecttoolsv1connect.NewRecordServiceHandler(
-			api.NewRecordHandler(options.Records),
-			connect.WithInterceptors(authInterceptor),
-		)
+		path, handler := connecttoolsv1connect.NewRecordServiceHandler(api.NewRecordHandler(options.Records))
 		mux.Handle(path, limitRequestBody(maxConnectRequestBodyBytes, handler))
 	}
 	if options.Profiles != nil && options.Sessions != nil && options.TCP != nil && options.MQTT != nil && options.Records != nil && options.Secrets != nil {
@@ -147,7 +132,7 @@ func New(options Options) (*Server, error) {
 		}
 		mux.Handle("/mcp", mcpHandler)
 	}
-	mux.Handle("/", login.browserOnly(web.NewHandler(assets)))
+	mux.Handle("/", web.NewHandler(assets))
 
 	server.handler = mux
 	server.http = &http.Server{

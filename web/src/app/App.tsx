@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { AppShell } from "../components/layout/AppShell";
 import { useCoreStore } from "../store/core";
+import { useWorkbenchStore } from "../store/workbench";
 
 const INITIAL_RETRY_DELAY_MS = 250;
 const MAX_RETRY_DELAY_MS = 5_000;
@@ -29,6 +30,8 @@ function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
 export function App() {
   const load = useCoreStore((state) => state.load);
   const watch = useCoreStore((state) => state.watch);
+  const refresh = useWorkbenchStore((state) => state.refresh);
+  const applyEvent = useWorkbenchStore((state) => state.applyEvent);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,7 +44,9 @@ export function App() {
 
         try {
           await load(controller.signal);
-          await watch(controller.signal);
+          const eventStream = watch(controller.signal, applyEvent);
+          await refresh();
+          await eventStream;
         } catch {
           // Store actions publish the user-facing error before retrying.
         }
@@ -60,7 +65,7 @@ export function App() {
 
     void maintainConnection();
     return () => controller.abort();
-  }, [load, watch]);
+  }, [applyEvent, load, refresh, watch]);
 
   return <AppShell />;
 }

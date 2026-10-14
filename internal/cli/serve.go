@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"time"
 
-	connecttoolsv1 "connect-tools/gen/go/connecttools/v1"
 	"connect-tools/gen/go/connecttools/v1/connecttoolsv1connect"
 	"connect-tools/internal/app"
 	"connect-tools/internal/config"
@@ -23,7 +22,6 @@ import (
 	"connect-tools/internal/server"
 	"connect-tools/internal/session"
 	cttcp "connect-tools/internal/tcp"
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 )
 
@@ -74,11 +72,7 @@ func runServe(ctx context.Context, opts *runtimeOptions, open bool) error {
 		}
 		openContext, cancelOpen := context.WithTimeout(ctx, browserReadyLimit)
 		defer cancelOpen()
-		response, loginErr := existingClient.CreateBrowserLogin(openContext, connect.NewRequest(&connecttoolsv1.CreateBrowserLoginRequest{}))
-		if loginErr != nil {
-			return fmt.Errorf("create browser login: %w", classifyRPCError(openContext, loginErr))
-		}
-		if err := openBrowser(openContext, response.Msg.Url); err != nil {
+		if err := openBrowser(openContext, "http://"+status.ListenAddress+"/"); err != nil {
 			if openContext.Err() != nil {
 				return openContext.Err()
 			}
@@ -148,13 +142,7 @@ func runServe(ctx context.Context, opts *runtimeOptions, open bool) error {
 		return operationError(fmt.Errorf("create service: %w", err))
 	}
 
-	var loginURL string
-	if open {
-		loginURL, err = service.CreateBrowserLoginURL()
-		if err != nil {
-			return operationError(fmt.Errorf("create browser login: %w", err))
-		}
-	}
+	browserURL := "http://" + server.DefaultAddress + "/"
 	runtimeInfo := config.RuntimeInfo{
 		PID:        os.Getpid(),
 		Address:    server.DefaultAddress,
@@ -178,7 +166,7 @@ func runServe(ctx context.Context, opts *runtimeOptions, open bool) error {
 			cancelBrowser = cancelOpen
 			go func() {
 				defer cancelOpen()
-				waitForInstanceAndOpen(openContext, existingClient, instanceID, loginURL, opts.Stderr)
+				waitForInstanceAndOpen(openContext, existingClient, instanceID, browserURL, opts.Stderr)
 			}()
 		}
 		return nil
@@ -206,14 +194,14 @@ func newInstanceID() (string, error) {
 	return hex.EncodeToString(raw), nil
 }
 
-func waitForInstanceAndOpen(ctx context.Context, client connecttoolsv1connect.CoreServiceClient, instanceID, loginURL string, stderr io.Writer) {
+func waitForInstanceAndOpen(ctx context.Context, client connecttoolsv1connect.CoreServiceClient, instanceID, browserURL string, stderr io.Writer) {
 	ticker := time.NewTicker(browserProbeDelay)
 	defer ticker.Stop()
 
 	for {
 		status, err := getStatus(ctx, client)
 		if err == nil && status.InstanceId == instanceID {
-			if err := openBrowser(ctx, loginURL); err != nil && stderr != nil && !errors.Is(ctx.Err(), context.Canceled) {
+			if err := openBrowser(ctx, browserURL); err != nil && stderr != nil && !errors.Is(ctx.Err(), context.Canceled) {
 				_, _ = fmt.Fprintf(stderr, "open browser: %v\n", err)
 			}
 			return
