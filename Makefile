@@ -1,4 +1,9 @@
-.PHONY: generate web-install web-build build build-windows build-macos build-linux clean
+.PHONY: generate web-install web-build build desktop desktop-dev desktop-doctor build-windows build-macos build-linux clean
+
+# 使用项目的 Go 工具链和 Wails 模块版本运行 CLI，防止旧全局 CLI 无法解析新标准库。
+WAILS = GOTOOLCHAIN=$$(go env GOVERSION) go run github.com/wailsapp/wails/v2/cmd/wails@$$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+# 允许桌面构建和开发传入平台参数，例如 -tags webkit2_41。
+WAILS_FLAGS ?=
 
 ifeq ($(OS),Windows_NT)
 PROTOC_GEN_ES := web/node_modules/.bin/protoc-gen-es.CMD
@@ -27,6 +32,18 @@ web-install:
 
 web-build:
 	pnpm --dir web build
+
+# 桌面构建使用当前平台的 Wails 工具链，CLI 的交叉构建目标保持独立。
+build: desktop
+
+desktop: generate
+	$(WAILS) build $(WAILS_FLAGS)
+
+desktop-dev: generate
+	$(WAILS) dev $(WAILS_FLAGS)
+
+desktop-doctor:
+	$(WAILS) doctor
 
 build-windows: generate web-build
 	mkdir -p dist

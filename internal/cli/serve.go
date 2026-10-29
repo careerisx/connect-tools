@@ -93,6 +93,11 @@ func runServe(ctx context.Context, opts *runtimeOptions, open bool, customToken 
 		if customToken != "" && customToken != probeToken {
 			return usageErrorf("stop the running service before changing --token")
 		}
+		// 桌面端只附加到已有服务，不取得它的生命周期所有权。
+		if opts.serviceReady != nil {
+			opts.serviceReady()
+			return nil
+		}
 		if !open {
 			return ErrAlreadyRunning
 		}
@@ -199,6 +204,9 @@ func runServe(ctx context.Context, opts *runtimeOptions, open bool, customToken 
 			return writeHumanLine(writer, "Serving on http://%s.", result.Address)
 		}); err != nil {
 			return operationError(err)
+		}
+		if opts.serviceReady != nil {
+			opts.serviceReady()
 		}
 		if open {
 			openContext, cancelOpen := context.WithTimeout(ctx, browserReadyLimit)

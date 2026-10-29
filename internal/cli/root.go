@@ -42,6 +42,8 @@ type runtimeOptions struct {
 	Stdout  io.Writer
 	Stderr  io.Writer
 	Output  string
+	// serviceReady 允许桌面入口复用服务启动流程，并在服务可用后创建窗口。
+	serviceReady func()
 }
 
 // Execute runs the CLI with explicitly supplied arguments and streams. It

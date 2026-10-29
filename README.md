@@ -1,8 +1,8 @@
 # Connect Tools
 
-Connect Tools 是一个跨平台的 TCP、MQTT 调试工具。它由一个 Go 单文件服务程序和 React Web UI 组成，同时提供完整 CLI 与 MCP 接口，可供 Codex、Claude Code、OpenCode 等 AI 智能体读取连接状态、检查通信记录并执行受控的调试操作。
+Connect Tools 是一个基于 Wails 的跨平台 TCP、MQTT 桌面调试工具。桌面端复用原有 React 页面和 Go 业务服务，同时保留独立的 Web UI、完整 CLI 与 MCP 接口，可供 Codex、Claude Code、OpenCode 等 AI 智能体读取连接状态、检查通信记录并执行受控的调试操作。
 
-服务只监听本机回环地址 `127.0.0.1:8765`。Web UI 已嵌入 Go 可执行文件，运行时不依赖 Electron、系统 WebView、Node.js 或额外前端文件。
+服务只监听本机回环地址 `127.0.0.1:8765`。页面资源嵌入可执行文件，运行时不依赖 Node.js 或额外前端文件。桌面端使用系统 WebView，不依赖 Electron；独立 CLI 服务仍可在没有桌面环境的系统运行。
 
 ## 功能
 
@@ -16,14 +16,28 @@ Connect Tools 是一个跨平台的 TCP、MQTT 调试工具。它由一个 Go �
 | 数据记录 | 收发方向、来源、会话、文本或 HEX 内容过滤，支持持续跟踪与等待 |
 | 格式转换 | Text、HEX、Base64、转义序列、JSON、整数、浮点数、时间戳 |
 | 校验和 | SUM8/16/32、CRC16 ARC/MODBUS/CCITT/X25、CRC32 IEEE/Castagnoli/Koopman |
-| 使用方式 | Web UI、CLI、MCP |
+| 使用方式 | Wails 桌面端、Web UI、CLI、MCP |
 | 操作系统 | Windows、macOS、Linux |
 
 单次 TCP 发送或 MQTT 发布的最大负载为 16 MiB。
 
 ## 快速开始
 
-已有对应平台的可执行文件时，直接启动服务：
+### 桌面端
+
+打开对应平台的 `connect-tools-desktop` 程序即可使用，Windows 下双击 `connect-tools-desktop.exe`，macOS 下打开应用包。页面布局、操作方式和功能与原有 Web UI 一致。
+
+桌面端自动启动本地服务，CLI 和 MCP 可以直接连接该服务。关闭窗口会关闭本次启动的服务和 TCP/MQTT 连接；如果启动前已有兼容的本地服务，则复用该服务，关闭窗口不会停止它。配置目录、连接配置和系统凭据库与原版本共用。
+
+| 平台 | 桌面运行环境 |
+| --- | --- |
+| Windows | WebView2 Runtime |
+| macOS | 系统自带 WKWebView |
+| Linux | GTK 3、WebKitGTK 及图形桌面环境，与构建时使用的 WebKitGTK 版本一致 |
+
+### 独立服务与 CLI
+
+使用独立的 `connect-tools` 可执行文件时，直接启动服务：
 
 ```bash
 connect-tools serve
@@ -73,8 +87,21 @@ connect-tools shutdown
 | pnpm | 10.x |
 | protoc | Protocol Buffers 编译器 |
 | make | 执行项目构建目标 |
+| Wails CLI | Makefile 自动使用 `go.mod` 中的版本及项目 Go 工具链，无需全局安装 |
 
-构建当前平台版本：
+### 桌面构建
+
+检查桌面工具链：
+
+```bash
+make desktop-doctor
+```
+
+Makefile 通过 `go run` 调用项目版本的 Wails CLI，并使用 `go env GOVERSION` 对应的 Go 工具链；首次执行可能下载并编译 CLI，后续复用 Go 缓存。这样可以确保 CLI 的类型分析器与项目工具链一致。
+
+Windows 需要 WebView2 Runtime；macOS 需要 Xcode Command Line Tools；Linux 需要 C 编译器及 GTK 3、WebKitGTK 开发包。可根据 `make desktop-doctor` 的结果补齐当前平台工具链。
+
+在项目根目录构建当前平台桌面程序：
 
 ```bash
 make build
@@ -83,23 +110,49 @@ make build
 产物位于：
 
 ```text
-dist/connect-tools
+build/desktop/bin/
 ```
 
-交叉构建：
+Windows 产物为 `connect-tools-desktop.exe`，macOS 为应用包，Linux 为桌面可执行文件。前端依赖和 Protobuf 代码由 Makefile 准备，Wails 负责构建前端和打包桌面程序。首次桌面构建会通过 Wails 的 `go mod tidy` 补齐新增依赖的间接依赖和校验信息。
+
+也可以直接使用桌面构建目标：
+
+```bash
+make desktop
+```
+
+开发模式：
+
+```bash
+make desktop-dev
+```
+
+此模式构建并监听现有 Vite 页面产物，由 Wails 提供开发资源服务，不需要另开浏览器或修改页面。桌面端的 RPC 请求仍使用原有 Connect 接口；实时事件经过桌面专用的临时回环端口转接。
+
+桌面程序需要对应平台的原生工具链，建议分别在 Windows、macOS、Linux 上构建。Linux 使用 WebKitGTK 4.1 时执行：
+
+```bash
+make desktop WAILS_FLAGS="-tags webkit2_41"
+# 开发模式使用相同标签
+make desktop-dev WAILS_FLAGS="-tags webkit2_41"
+```
+
+### 独立 CLI 构建
+
+CLI 保持原有无桌面依赖的构建方式：
 
 ```bash
 # Windows amd64
 make build-windows
 
-# macOS arm64、amd64
+# macOS arm64
 make build-macos
 
-# Linux amd64、arm64
+# Linux amd64
 make build-linux
 ```
 
-Windows 原生环境执行 Makefile 时，建议使用 Git Bash 或其他支持 POSIX 环境变量语法的终端。各构建目标会自动安装锁定版本的前端依赖、生成 Protobuf 代码、构建 Web UI，并将前端资源嵌入最终 Go 可执行文件。
+CLI 产物位于 `dist/<平台-架构>/`。Windows 原生环境执行 Makefile 时，建议使用 Git Bash 或其他支持 POSIX 环境变量语法的终端。各 CLI 构建目标会自动安装锁定版本的前端依赖、生成 Protobuf 代码、构建 Web UI，并将前端资源嵌入最终 Go 可执行文件。
 
 开发时可分别执行：
 
@@ -111,7 +164,7 @@ go build -o dist/connect-tools ./cmd/connect-tools
 
 ## Web UI 使用方法
 
-执行 `connect-tools serve` 并访问 `http://127.0.0.1:8765/` 后，可在 Web UI 中完成主要操作：
+打开桌面程序，或执行 `connect-tools serve` 并访问 `http://127.0.0.1:8765/` 后，可在同一套页面中完成主要操作：
 
 1. 在配置区域创建 TCP 客户端、TCP 服务端或 MQTT 配置。
 2. 启动配置，创建一个独立运行会话。
@@ -522,7 +575,7 @@ connect-tools mcp config --agent opencode
 }
 ```
 
-AI 智能体使用 MCP 期间，`connect-tools serve` 必须保持运行。
+AI 智能体使用 MCP 期间，桌面程序或 `connect-tools serve` 启动的本地服务必须保持运行。
 
 ### MCP 工具
 

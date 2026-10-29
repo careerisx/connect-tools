@@ -1,7 +1,7 @@
 import { fromBinary } from "@bufbuild/protobuf";
 import { create } from "zustand";
 
-import { coreClient } from "../api/client";
+import { coreClient, coreEventWebSocketURL, prepareDesktopTransport } from "../api/client";
 import { CoreEventSchema, type CoreEvent, type CoreStatus } from "../gen/connecttools/v1/core_pb";
 
 type CoreEventHandler = (event: CoreEvent) => Promise<void> | void;
@@ -33,14 +33,6 @@ function errorMessage(error: unknown): string {
   return "无法连接到连接工具服务";
 }
 
-/** Builds the same-origin WebSocket URL with the last processed event cursor. */
-function eventWebSocketURL(afterSequence: bigint): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const url = new URL("/ws/events", `${protocol}//${window.location.host}`);
-  url.searchParams.set("after", afterSequence.toString());
-  return url.toString();
-}
-
 /** Opens one WebSocket session and processes binary CoreEvent frames in order. */
 function watchWebSocket(
   signal: AbortSignal,
@@ -53,7 +45,7 @@ function watchWebSocket(
       return;
     }
 
-    const socket = new WebSocket(eventWebSocketURL(afterSequence));
+    const socket = new WebSocket(coreEventWebSocketURL(afterSequence));
     socket.binaryType = "arraybuffer";
     let settled = false;
     let eventQueue = Promise.resolve();
@@ -113,6 +105,7 @@ export const useCoreStore = create<CoreState>((set, get) => ({
 
   load: async (signal) => {
     try {
+      await prepareDesktopTransport(signal);
       const status = await coreClient.getStatus({}, { signal });
       if (signal?.aborted) return;
       set((state) => {

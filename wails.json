@@ -1,0 +1,14 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "connect-tools-desktop",
+  "outputfilename": "connect-tools-desktop",
+  "frontend:dir": "web",
+  "assetdir": "internal/web/dist",
+  "frontend:install": "pnpm install --frozen-lockfile",
+  "frontend:build": "pnpm build",
+  "frontend:dev:build": "pnpm build",
+  "frontend:dev:watcher": "pnpm exec vite build --watch",
+  "reloaddirs": "internal/web/dist",
+  "wailsjsdir": "web",
+  "build:dir": "build/desktop"
+}

@@ -4,6 +4,8 @@ web/node_modules/
 web/dist/
 web/tsconfig.tsbuildinfo
 dist/
+build/desktop/
+web/wailsjs/
 internal/web/dist/*
 !internal/web/dist/.keep
 coverage/
