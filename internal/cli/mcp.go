@@ -50,13 +50,14 @@ func newMCPStatusCommand(opts *runtimeOptions) *cobra.Command {
 func newMCPConfigCommand(opts *runtimeOptions) *cobra.Command {
 	var agent string
 	command := &cobra.Command{Use: "config", Args: noArgs, RunE: func(_ *cobra.Command, _ []string) error {
+		// 配置直接携带令牌占位符，由用户通过 `mcp token --show` 获取后手动替换。
 		switch agent {
 		case "codex":
-			_, _ = fmt.Fprintln(opts.Stdout, "[mcp_servers.connect-tools]\nurl = \"http://127.0.0.1:8765/mcp\"\nbearer_token_env_var = \"CONNECT_TOOLS_TOKEN\"")
+			_, _ = fmt.Fprintln(opts.Stdout, "[mcp_servers.connect-tools]\nurl = \"http://127.0.0.1:8765/mcp\"\nhttp_headers = { \"Authorization\" = \"Bearer <token>\" }")
 		case "claude":
-			_, _ = fmt.Fprintln(opts.Stdout, "claude mcp add --transport http connect-tools http://127.0.0.1:8765/mcp --header \"Authorization: Bearer ${CONNECT_TOOLS_TOKEN}\"")
+			_, _ = fmt.Fprintln(opts.Stdout, "claude mcp add --transport http connect-tools http://127.0.0.1:8765/mcp --header \"Authorization: Bearer <token>\"")
 		case "opencode":
-			_, _ = fmt.Fprintln(opts.Stdout, "{\"mcp\":{\"connect-tools\":{\"type\":\"remote\",\"url\":\"http://127.0.0.1:8765/mcp\",\"headers\":{\"Authorization\":\"Bearer {env:CONNECT_TOOLS_TOKEN}\"}}}}")
+			_, _ = fmt.Fprintln(opts.Stdout, "{\"mcp\":{\"connect-tools\":{\"type\":\"remote\",\"url\":\"http://127.0.0.1:8765/mcp\",\"headers\":{\"Authorization\":\"Bearer <token>\"}}}}")
 		default:
 			return usageErrorf("--agent must be codex, claude, or opencode")
 		}

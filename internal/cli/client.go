@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -15,10 +14,6 @@ import (
 	"connect-tools/gen/go/connecttools/v1/connecttoolsv1connect"
 	"connect-tools/internal/config"
 	"connectrpc.com/connect"
-)
-
-const (
-	accessTokenHexLength = 64
 )
 
 type runtimeClient struct {
@@ -102,6 +97,7 @@ func newAddressHTTPClient(address, token, version string) (string, *http.Client,
 	return "http://" + address, httpClient, nil
 }
 
+// readAccessToken 读取本地服务令牌，并复用服务端的令牌格式校验。
 func readAccessToken(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -109,14 +105,11 @@ func readAccessToken(path string) (string, error) {
 	}
 	contents := string(data)
 	token := contents
-	if len(contents) == accessTokenHexLength+1 && strings.HasSuffix(contents, "\n") {
+	if strings.HasSuffix(contents, "\n") {
 		token = strings.TrimSuffix(contents, "\n")
 	}
-	if len(token) != accessTokenHexLength || (contents != token && contents != token+"\n") {
-		return "", fmt.Errorf("invalid access token file %q", path)
-	}
-	if _, err := hex.DecodeString(token); err != nil {
-		return "", fmt.Errorf("invalid access token file %q", path)
+	if err := config.ValidateToken(token); err != nil {
+		return "", fmt.Errorf("invalid access token file %q: %w", path, err)
 	}
 	return token, nil
 }

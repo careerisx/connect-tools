@@ -340,10 +340,15 @@ func (h *Handler) unsubscribeMQTT(ctx context.Context, args map[string]any) (ctm
 	return h.deps.MQTT.Unsubscribe(ctx, stringArg(args, "session_id"), []string{stringArg(args, "filter")})
 }
 
+// toolDefinitions 返回 MCP 工具定义，确保参数 Schema 符合 JSON Schema 格式。
 func toolDefinitions() []map[string]any {
 	read := true
 	write := false
+	// definition 统一生成工具 Schema，避免无必填参数时将 nil 切片序列化为 null。
 	definition := func(name, description string, properties map[string]any, required []string, readOnly bool) map[string]any {
+		if required == nil {
+			required = []string{}
+		}
 		return map[string]any{"name": name, "description": description, "inputSchema": map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}, "annotations": map[string]any{"readOnlyHint": readOnly}}
 	}
 	stringProp := func(description string) map[string]any {

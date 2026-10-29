@@ -13,7 +13,6 @@ import (
 
 const (
 	tokenByteLength = 32
-	tokenHexLength  = tokenByteLength * 2
 	tokenWaitLimit  = time.Second
 	tokenWaitDelay  = 5 * time.Millisecond
 )
@@ -89,6 +88,21 @@ func waitForToken(path string) (string, error) {
 	}
 }
 
+// ValidateToken 校验服务令牌，允许至少 32 个不含空格的可打印 ASCII 字符。
+// 校验错误不包含令牌内容，避免凭据通过日志泄露。
+func ValidateToken(token string) error {
+	if len(token) < tokenByteLength {
+		return fmt.Errorf("access token must contain at least %d printable ASCII characters", tokenByteLength)
+	}
+	for i := 0; i < len(token); i++ {
+		if token[i] < '!' || token[i] > '~' {
+			return errors.New("access token must contain only printable ASCII characters without spaces")
+		}
+	}
+	return nil
+}
+
+// readToken 读取已保存的令牌，兼容自动生成和自定义的令牌格式。
 func readToken(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -97,13 +111,10 @@ func readToken(path string) (string, error) {
 
 	contents := string(data)
 	token := contents
-	if len(contents) == tokenHexLength+1 && contents[tokenHexLength] == '\n' {
-		token = contents[:tokenHexLength]
+	if len(contents) > 0 && contents[len(contents)-1] == '\n' {
+		token = contents[:len(contents)-1]
 	}
-	if len(token) != tokenHexLength || (contents != token && contents != token+"\n") {
-		return "", fmt.Errorf("invalid access token file %q: expected %d hexadecimal characters", path, tokenHexLength)
-	}
-	if _, err := hex.DecodeString(token); err != nil {
+	if err := ValidateToken(token); err != nil {
 		return "", fmt.Errorf("invalid access token file %q: %w", path, err)
 	}
 

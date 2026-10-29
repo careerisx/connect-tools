@@ -37,36 +37,62 @@ type serveOutput struct {
 	Existing   bool   `json:"existing"`
 }
 
+// newServeCommand 定义服务启动参数，支持指定本地服务访问令牌。
 func newServeCommand(opts *runtimeOptions) *cobra.Command {
 	var open bool
+	// customToken 仅由启动参数提供，不读取或修改系统环境变量。
+	var customToken string
 	command := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the local Connect Tools service",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runServe(cmd.Context(), opts, open)
+			if cmd.Flags().Changed("token") {
+				if err := config.ValidateToken(customToken); err != nil {
+					return usageErrorf("invalid --token: %v", err)
+				}
+			}
+			return runServe(cmd.Context(), opts, open, customToken)
 		},
 	}
 	command.Flags().BoolVar(&open, "open", false, "open the web interface in the default browser")
+	command.Flags().StringVar(&customToken, "token", "", "set and persist an access token with at least 32 printable ASCII characters without spaces")
 	return command
 }
 
-func runServe(ctx context.Context, opts *runtimeOptions, open bool) error {
+// runServe 启动本地服务，仅在成功监听后持久化显式指定的令牌。
+func runServe(ctx context.Context, opts *runtimeOptions, open bool, customToken string) error {
 	paths, err := config.ResolvePaths()
 	if err != nil {
 		return operationError(fmt.Errorf("resolve application paths: %w", err))
 	}
-	token, err := config.LoadOrCreateToken(paths.TokenFile)
-	if err != nil {
-		return operationError(fmt.Errorf("load or create service access token: %w", err))
+	token := customToken
+	if token == "" {
+		token, err = config.LoadOrCreateToken(paths.TokenFile)
+		if err != nil {
+			return operationError(fmt.Errorf("load or create service access token: %w", err))
+		}
 	}
 
-	existingClient, err := newAddressClient(server.DefaultAddress, token, opts.Version)
+	// 优先使用已保存的令牌探测旧服务，避免更换令牌时误判其运行状态。
+	probeToken := token
+	if customToken != "" {
+		storedToken, readErr := readAccessToken(paths.TokenFile)
+		if readErr == nil {
+			probeToken = storedToken
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return operationError(fmt.Errorf("load existing service access token: %w", readErr))
+		}
+	}
+	existingClient, err := newAddressClient(server.DefaultAddress, probeToken, opts.Version)
 	if err != nil {
 		return operationError(fmt.Errorf("configure service probe: %w", err))
 	}
 	status, probeErr := getStatus(ctx, existingClient)
 	if probeErr == nil {
+		if customToken != "" && customToken != probeToken {
+			return usageErrorf("stop the running service before changing --token")
+		}
 		if !open {
 			return ErrAlreadyRunning
 		}
@@ -88,6 +114,13 @@ func runServe(ctx context.Context, opts *runtimeOptions, open bool) error {
 	}
 	if !errors.Is(probeErr, ErrServiceNotRunning) {
 		return operationError(fmt.Errorf("probe existing service: %w", probeErr))
+	}
+	// 新实例的浏览器就绪探测必须使用新令牌，而不是旧服务的令牌。
+	if probeToken != token {
+		existingClient, err = newAddressClient(server.DefaultAddress, token, opts.Version)
+		if err != nil {
+			return operationError(fmt.Errorf("configure service readiness probe: %w", err))
+		}
 	}
 
 	instanceID, err := newInstanceID()
@@ -153,6 +186,12 @@ func runServe(ctx context.Context, opts *runtimeOptions, open bool) error {
 	result := serveOutput{Address: server.DefaultAddress, InstanceID: instanceID, Existing: false}
 	cancelBrowser := func() {}
 	onReady := func() error {
+		// 持有监听端口后再原子保存令牌，避免启动冲突覆盖正在运行的服务凭据。
+		if customToken != "" {
+			if err := config.WritePrivateFile(paths.TokenFile, []byte(token+"\n")); err != nil {
+				return operationError(fmt.Errorf("save custom service access token: %w", err))
+			}
+		}
 		if err := config.WriteRuntime(paths.RuntimeFile, runtimeInfo); err != nil {
 			return operationError(fmt.Errorf("write service runtime metadata: %w", err))
 		}

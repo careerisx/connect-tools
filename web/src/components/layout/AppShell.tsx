@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
   Cable,
   Clock3,
+  Copy,
   Database,
   Inbox,
   Pencil,
@@ -508,10 +509,125 @@ function DeleteProfileDialog({ profile }: { profile: Profile }) {
   );
 }
 
+/** 提供 MCP 启停控制与常用智能体的接入配置，不向浏览器暴露服务令牌。 */
+function MCPSettingsDialog() {
+  const status = useCoreStore((state) => state.status);
+  const connected = useCoreStore((state) => state.connected);
+  /** 弹窗与请求状态独立，打开设置不会切换 MCP 服务。 */
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  /** 平台只影响终端命令，智能体配置沿用 CLI 提供的格式。 */
+  const [platform, setPlatform] = useState<"powershell" | "bash">("powershell");
+  const [copied, setCopied] = useState<string>();
+  const [copyError, setCopyError] = useState<string>();
+  const enabled = status?.mcpEnabled ?? false;
+  const mcpURL = `http://${status?.listenAddress || "127.0.0.1:8765"}/mcp`;
+  /** 令牌通过终端命令获取后手动填入配置，不依赖环境变量。 */
+  const tokenPlaceholder = "你的Token";
+  const tokenCommand = platform === "powershell" ? ".\\connect-tools.exe mcp token --show" : "connect-tools mcp token --show";
+  /** 配置示例使用占位符代替真实令牌，复制后由用户手动替换。 */
+  const agentConfigs = [
+    {
+      id: "codex",
+      name: "Codex",
+      description: `将以下内容加入 Codex 的 config.toml，并把 ${tokenPlaceholder} 替换为上一步获取的令牌。`,
+      code: `[mcp_servers.connect-tools]\nurl = "${mcpURL}"\nhttp_headers = { "Authorization" = "Bearer ${tokenPlaceholder}" }`,
+    },
+    {
+      id: "claude",
+      name: "Claude Code",
+      description: `在终端执行以下命令注册 HTTP MCP 服务，执行前先把 ${tokenPlaceholder} 替换为上一步获取的令牌。`,
+      code: `claude mcp add --transport http connect-tools ${mcpURL} --header "Authorization: Bearer ${tokenPlaceholder}"`,
+    },
+    {
+      id: "opencode",
+      name: "OpenCode",
+      description: `将以下 mcp 节点合并到 OpenCode 的 opencode.json，保留其他已有配置，并把 ${tokenPlaceholder} 替换为上一步获取的令牌。`,
+      code: JSON.stringify({ mcp: { "connect-tools": { type: "remote", url: mcpURL, headers: { Authorization: `Bearer ${tokenPlaceholder}` } } } }, null, 2),
+    },
+  ];
+
+  /** 打开时刷新服务状态，并清理上次操作的提示。 */
+  const changeOpen = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    setError(undefined);
+    setCopied(undefined);
+    setCopyError(undefined);
+    if (nextOpen) void useCoreStore.getState().load();
+  };
+
+  /** 复用现有启停接口，以服务响应同步全局状态并防止重复提交。 */
+  const toggleMCP = async () => {
+    if (saving || !connected || !status) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      const nextStatus = await coreClient.setMCPEnabled({ enabled: !enabled });
+      useCoreStore.setState({ status: nextStatus });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "修改 MCP 状态失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 只在用户点击时复制示例；剪贴板不可用时提示手动复制。 */
+  const copyCode = async (id: string, code: string) => {
+    setCopied(undefined);
+    setCopyError(undefined);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(id);
+    } catch {
+      setCopyError("无法访问剪贴板，请选中下方命令或配置手动复制。");
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={changeOpen}>
+      <Dialog.Trigger asChild><Button variant="outline" size="sm" aria-label="打开 MCP 设置"><Settings2 size={14}/>MCP<span className="max-[430px]:hidden"> 设置</span><span className={cn("size-1.5 rounded-full", connected && enabled ? "bg-emerald-500" : "bg-slate-400")} aria-hidden="true"/></Button></Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-sm" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(720px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white font-sans text-slate-900 shadow-2xl outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" aria-describedby="mcp-settings-description">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 p-5 dark:border-slate-700">
+            <div><Dialog.Title className="text-lg font-bold">MCP 设置</Dialog.Title><Dialog.Description className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400" id="mcp-settings-description">管理本地 MCP 接入，让智能体读取调试记录并操作 TCP、MQTT 会话。</Dialog.Description></div>
+            <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label="关闭 MCP 设置"><X size={18}/></Button></Dialog.Close>
+          </div>
+          {/* 中间区域独立滚动，标题和底部操作始终保留在可视范围内。 */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+            <div><p className="text-sm font-semibold">MCP 服务 <Badge className="ml-2">{!connected || !status ? "状态不可用" : enabled ? "已启用" : "已停止"}</Badge></p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">停止 MCP 不会关闭核心服务或已有 TCP、MQTT 会话。</p></div>
+            <Button variant={enabled ? "outline" : "default"} disabled={saving || !connected || !status} onClick={() => void toggleMCP()}>{enabled ? <Square size={14}/> : <Play size={14}/>}{saving ? "正在处理…" : enabled ? "停止 MCP" : "启用 MCP"}</Button>
+          </div>
+          {error ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300" role="alert">{error}</div> : null}
+          <div className="mt-4 grid gap-1.5"><h3 className="text-xs font-semibold">服务地址</h3><code className="select-text break-all rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs dark:bg-slate-800">{mcpURL}</code><p className="text-xs leading-5 text-slate-500 dark:text-slate-400">仅限本机访问，使用 Bearer Token 认证。启用 MCP 后，智能体可以发送数据及创建、停止会话。</p></div>
+          <section className="mt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">1. 设置访问令牌</h3><div className="flex gap-1" role="group" aria-label="终端平台">{([ ["powershell", "Windows PowerShell"], ["bash", "macOS / Linux"] ] as const).map(([value, label]) => <Button key={value} variant={platform === value ? "outline" : "ghost"} size="sm" aria-pressed={platform === value} onClick={() => { setPlatform(value); setCopied(undefined); setCopyError(undefined); }}>{label}</Button>)}</div></div>
+            <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">执行以下命令获取令牌，然后在下方智能体配置中把“你的Token”替换为命令输出的值。令牌仅在终端显示，请勿提交到仓库或共享配置。</p>
+            <div className="mt-2 flex justify-end"><Button variant="ghost" size="sm" onClick={() => void copyCode("token", tokenCommand)}><Copy size={13}/>{copied === "token" ? "已复制" : "复制命令"}</Button></div>
+            <pre className="overflow-x-auto rounded-lg bg-slate-100 p-3 font-mono text-xs leading-5 dark:bg-slate-800"><code>{tokenCommand}</code></pre>
+          </section>
+          <section className="mt-5">
+            <h3 className="text-sm font-semibold">2. 配置智能体</h3>
+            <Tabs.Root className="mt-3" defaultValue="codex" onValueChange={() => { setCopied(undefined); setCopyError(undefined); }}>
+              <Tabs.List className="flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800" aria-label="智能体 MCP 配置">{agentConfigs.map((agent) => <Tabs.Trigger key={agent.id} value={agent.id} className="flex-1 rounded-md px-2 py-2 text-xs font-semibold text-slate-500 data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm dark:text-slate-400 dark:data-[state=active]:bg-slate-700 dark:data-[state=active]:text-blue-300">{agent.name}</Tabs.Trigger>)}</Tabs.List>
+              {agentConfigs.map((agent) => <Tabs.Content key={agent.id} value={agent.id} className="mt-3 outline-none"><p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{agent.description}</p><div className="mt-2 flex justify-end"><Button variant="ghost" size="sm" onClick={() => void copyCode(agent.id, agent.code)}><Copy size={13}/>{copied === agent.id ? "已复制" : "复制配置"}</Button></div><pre className="max-h-64 overflow-auto rounded-lg bg-slate-100 p-3 font-mono text-xs leading-5 dark:bg-slate-800"><code>{agent.code}</code></pre></Tabs.Content>)}
+            </Tabs.Root>
+          </section>
+          {copyError ? <p className="mt-3 text-xs text-amber-700 dark:text-amber-300" role="alert">{copyError}</p> : null}
+          <p className="mt-4 text-xs leading-5 text-slate-500 dark:text-slate-400">配置完成后重新连接或加载 MCP 工具；停止 MCP 后客户端调用将不可用。令牌更换后需同步更新智能体配置中的令牌。</p>
+          </div>
+          <div className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-4 dark:border-slate-700"><Dialog.Close asChild><Button variant="outline">关闭</Button></Dialog.Close></div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 /** 展示活动会话、实时记录、记录详情和会话管理。 */
 export function AppShell() {
   const connected = useCoreStore((state) => state.connected);
-  const status = useCoreStore((state) => state.status);
   const store = useWorkbenchStore();
   const [payload, setPayload] = useState("");
   const [sendEncoding, setSendEncoding] = useState(storedSendEncoding);
@@ -607,7 +723,7 @@ export function AppShell() {
         </div>
         <div className="flex items-center justify-end gap-2">
           <span className="mr-1 inline-flex items-center gap-2 whitespace-nowrap text-xs font-semibold text-slate-500 dark:text-slate-400"><span className={cn("size-2 rounded-full ring-3", connected ? "bg-emerald-500 ring-emerald-500/15" : "bg-red-500 ring-red-500/15")}/><span className="max-[430px]:hidden">核心服务{connected ? "在线" : "离线"}</span></span>
-          <Button variant="outline" size="sm" onClick={() => void coreClient.setMCPEnabled({ enabled: !status?.mcpEnabled }).then(() => useCoreStore.getState().load())}><span className="max-[430px]:hidden">MCP </span>{status?.mcpEnabled ? "已启用" : "已禁用"}</Button>
+          <MCPSettingsDialog/>
           <Button variant="ghost" size="icon" onClick={() => void store.refresh()} aria-label="刷新数据"><RefreshCw size={17}/></Button>
         </div>
       </header>
